@@ -1,0 +1,223 @@
+import JSZip from 'jszip';
+import {
+  NValuesMap,
+  PricesMap,
+  TemplatesMap,
+  ConstraintsMap,
+  PlanMap,
+  EatenMap,
+  PorzioniMap,
+} from '../types';
+import {
+  KEY_TO_FILENAME,
+  FILENAME_TO_KEY,
+  DEFAULT_NVALUES,
+  DEFAULT_PRICES,
+  DEFAULT_TEMPLATES,
+  DEFAULT_CONSTRAINTS,
+  DEFAULT_PORZIONI,
+  generateInitialWeights,
+  generateInitialCalories,
+  generateInitialEaten,
+  generateInitialPlan,
+} from '../constants';
+
+export interface AppStateData {
+  weights: [string, number][];
+  calories: [string, number][];
+  nvalues: NValuesMap;
+  prices: PricesMap;
+  eaten: EatenMap;
+  pasti: TemplatesMap;
+  plan: PlanMap;
+  constraints: ConstraintsMap;
+  porzioni: PorzioniMap;
+}
+
+const STORAGE_KEYS = {
+  weights: 'diet_weights',
+  calories: 'diet_calories',
+  nvalues: 'diet_nvalues',
+  prices: 'diet_prices',
+  eaten: 'diet_eaten',
+  pasti: 'diet_pasti',
+  plan: 'diet_plan',
+  constraints: 'diet_constraints',
+  porzioni: 'diet_porzioni',
+  hasInitialized: 'diet_has_initialized_v1',
+};
+
+export function loadInitialData(): AppStateData {
+  const hasInit = localStorage.getItem(STORAGE_KEYS.hasInitialized);
+
+  if (!hasInit) {
+    const initialData: AppStateData = {
+      weights: generateInitialWeights(),
+      calories: generateInitialCalories(),
+      nvalues: DEFAULT_NVALUES,
+      prices: DEFAULT_PRICES,
+      eaten: generateInitialEaten(),
+      pasti: DEFAULT_TEMPLATES,
+      plan: generateInitialPlan(),
+      constraints: DEFAULT_CONSTRAINTS,
+      porzioni: DEFAULT_PORZIONI,
+    };
+    saveAllData(initialData);
+    localStorage.setItem(STORAGE_KEYS.hasInitialized, 'true');
+    return initialData;
+  }
+
+  function getStored<T>(key: string, fallback: T): T {
+    try {
+      const item = localStorage.getItem(key);
+      if (item) {
+        return JSON.parse(item) as T;
+      }
+    } catch (e) {
+      console.error(`Error parsing stored key ${key}:`, e);
+    }
+    return fallback;
+  }
+
+  return {
+    weights: getStored<[string, number][]>(STORAGE_KEYS.weights, []),
+    calories: getStored<[string, number][]>(STORAGE_KEYS.calories, []),
+    nvalues: getStored<NValuesMap>(STORAGE_KEYS.nvalues, {}),
+    prices: getStored<PricesMap>(STORAGE_KEYS.prices, {}),
+    eaten: getStored<EatenMap>(STORAGE_KEYS.eaten, {}),
+    pasti: getStored<TemplatesMap>(STORAGE_KEYS.pasti, {}),
+    plan: getStored<PlanMap>(STORAGE_KEYS.plan, {}),
+    constraints: getStored<ConstraintsMap>(STORAGE_KEYS.constraints, DEFAULT_CONSTRAINTS),
+    porzioni: getStored<PorzioniMap>(STORAGE_KEYS.porzioni, {}),
+  };
+}
+
+export function saveAllData(data: AppStateData): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.weights, JSON.stringify(data.weights));
+    localStorage.setItem(STORAGE_KEYS.calories, JSON.stringify(data.calories));
+    localStorage.setItem(STORAGE_KEYS.nvalues, JSON.stringify(data.nvalues));
+    localStorage.setItem(STORAGE_KEYS.prices, JSON.stringify(data.prices));
+    localStorage.setItem(STORAGE_KEYS.eaten, JSON.stringify(data.eaten));
+    localStorage.setItem(STORAGE_KEYS.pasti, JSON.stringify(data.pasti));
+    localStorage.setItem(STORAGE_KEYS.plan, JSON.stringify(data.plan));
+    localStorage.setItem(STORAGE_KEYS.constraints, JSON.stringify(data.constraints));
+    localStorage.setItem(STORAGE_KEYS.porzioni, JSON.stringify(data.porzioni));
+  } catch (err) {
+    console.error('Failed to save to localStorage:', err);
+  }
+}
+
+export function hasAnyData(data: AppStateData): boolean {
+  return (
+    (data.weights && data.weights.length > 0) ||
+    (data.calories && data.calories.length > 0) ||
+    (data.nvalues && Object.keys(data.nvalues).length > 0) ||
+    (data.prices && Object.keys(data.prices).length > 0) ||
+    (data.pasti && Object.keys(data.pasti).length > 0) ||
+    (data.plan && Object.keys(data.plan).length > 0) ||
+    (data.eaten && Object.keys(data.eaten).length > 0)
+  );
+}
+
+export async function exportDataZip(data: AppStateData): Promise<Blob> {
+  const zip = new JSZip();
+
+  const fileDataMap: Record<string, unknown> = {
+    [KEY_TO_FILENAME.weights]: data.weights,
+    [KEY_TO_FILENAME.calories]: data.calories,
+    [KEY_TO_FILENAME.prices]: data.prices,
+    [KEY_TO_FILENAME.nvalues]: data.nvalues,
+    [KEY_TO_FILENAME.eaten]: data.eaten,
+    [KEY_TO_FILENAME.pasti]: data.pasti,
+    [KEY_TO_FILENAME.plan]: data.plan,
+    [KEY_TO_FILENAME.constraints]: data.constraints,
+    [KEY_TO_FILENAME.porzioni]: data.porzioni,
+  };
+
+  for (const [filename, content] of Object.entries(fileDataMap)) {
+    zip.file(filename, JSON.stringify(content, null, 2));
+  }
+
+  return await zip.generateAsync({ type: 'blob' });
+}
+
+export async function importDataFiles(
+  files: FileList | File[],
+  currentData: AppStateData
+): Promise<{ loaded: number; updatedData: AppStateData; errors: string[] }> {
+  const updatedData: AppStateData = { ...currentData };
+  let loadedCount = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    if (file.name.endsWith('.zip')) {
+      try {
+        const zip = await JSZip.loadAsync(file);
+        for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
+          if (zipEntry.dir) continue;
+          const basename = relativePath.split('/').pop() || '';
+          const key = FILENAME_TO_KEY[basename];
+          if (key) {
+            try {
+              const text = await zipEntry.async('string');
+              const parsed = JSON.parse(text);
+              (updatedData as unknown as Record<string, unknown>)[key] = parsed;
+              loadedCount++;
+            } catch (err) {
+              errors.push(`Errore nel parsing di ${basename} nello zip`);
+            }
+          }
+        }
+      } catch (err) {
+        errors.push(`File ${file.name} non è uno zip valido.`);
+      }
+    } else if (file.name.endsWith('.json')) {
+      const basename = file.name.split('/').pop() || '';
+      const key = FILENAME_TO_KEY[basename];
+      if (key) {
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          (updatedData as unknown as Record<string, unknown>)[key] = parsed;
+          loadedCount++;
+        } catch (err) {
+          errors.push(`File ${file.name} non è un JSON valido.`);
+        }
+      } else {
+        errors.push(`File ${file.name} non riconosciuto. Ignorato.`);
+      }
+    } else {
+      errors.push(`File ${file.name}: formato non supportato (solo .zip o .json).`);
+    }
+  }
+
+  if (loadedCount > 0) {
+    saveAllData(updatedData);
+  }
+
+  return { loaded: loadedCount, updatedData, errors };
+}
+
+export function clearAllUserData(): AppStateData {
+  const empty: AppStateData = {
+    weights: [],
+    calories: [],
+    nvalues: {},
+    prices: {},
+    eaten: {},
+    pasti: {},
+    plan: {},
+    constraints: {
+      kcal: { enabled: false, min: null, max: null },
+      proteine: { enabled: false, min: null, max: null },
+      carboidrati: { enabled: false, min: null, max: null },
+      grassi: { enabled: false, min: null, max: null },
+    },
+    porzioni: {},
+  };
+  saveAllData(empty);
+  return empty;
+}
