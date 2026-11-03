@@ -14,6 +14,8 @@ import {
   exportDataZip,
   importDataFiles,
   clearAllUserData,
+  getDemoAppState,
+  STORAGE_KEYS,
   AppStateData,
 } from './services/storage';
 import { optimizeWeeklyPlan } from './services/optimizer';
@@ -38,16 +40,36 @@ export const App: React.FC = () => {
     return saved || 'swiss';
   });
 
+  const [persistInBrowser, setPersistInBrowser] = useState<boolean>(() => {
+    return localStorage.getItem(STORAGE_KEYS.persistInBrowser) === 'true';
+  });
+
   // Apply theme to document root
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
     localStorage.setItem('diet_app_theme', currentTheme);
   }, [currentTheme]);
 
-  // Sync state changes with localStorage
+  // Sync state changes with storage (sessionStorage always, localStorage only if opted in)
   useEffect(() => {
-    saveAllData(data);
-  }, [data]);
+    saveAllData(data, persistInBrowser);
+  }, [data, persistInBrowser]);
+
+  const handleTogglePersist = (persist: boolean) => {
+    setPersistInBrowser(persist);
+    saveAllData(data, persist);
+    if (persist) {
+      notify('info', 'Salvataggio nel browser attivato (localStorage).');
+    } else {
+      notify('info', 'Modalità Offline attiva: i dati sono solo in memoria e non saranno salvati nel browser.');
+    }
+  };
+
+  const handleLoadDemo = () => {
+    const demo = getDemoAppState();
+    setData(demo);
+    notify('success', 'Dati dimostrativi di esempio caricati in memoria.');
+  };
 
   const notify = (
     type: 'success' | 'error' | 'warning' | 'info',
@@ -190,7 +212,12 @@ export const App: React.FC = () => {
       const updatedPlan = { ...prev.plan };
       const updatedPorzioni = { ...prev.porzioni };
       for (const d of dates) {
-        delete updatedPlan[d];
+        updatedPlan[d] = {
+          Colazione: '-',
+          Pranzo: '-',
+          Cena: '-',
+          Merenda: '-',
+        };
         delete updatedPorzioni[d];
       }
       return {
@@ -493,7 +520,7 @@ export const App: React.FC = () => {
   };
 
   const handleUpload = async (files: FileList) => {
-    const { loaded, updatedData, errors } = await importDataFiles(files, data);
+    const { loaded, updatedData, errors } = await importDataFiles(files, data, persistInBrowser);
     if (loaded > 0) {
       setData(updatedData);
       notify('success', `${loaded} file caricati con successo in memoria!`);
@@ -506,6 +533,7 @@ export const App: React.FC = () => {
   const handleClear = () => {
     const empty = clearAllUserData();
     setData(empty);
+    setPersistInBrowser(false);
     notify('info', 'Dati rimossi dalla memoria.');
   };
 
@@ -528,35 +556,41 @@ export const App: React.FC = () => {
       {/* Setup / Backup Banner */}
       <SetupBanner
         hasData={isDataPresent}
+        persistInBrowser={persistInBrowser}
+        onTogglePersist={handleTogglePersist}
         onUpload={handleUpload}
         onClear={handleClear}
+        onLoadDemo={handleLoadDemo}
       />
 
       <div className="container">
         {/* Alerts / Flashed Messages */}
-        {alerts.map((al) => (
-          <div
-            key={al.id}
-            className={`alert alert-${al.type}`}
-            style={{ justifyContent: 'space-between' }}
-          >
-            <span>{al.message}</span>
-            <button
-              type="button"
-              onClick={() => removeAlert(al.id)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'inherit',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: '12pt',
-              }}
+        <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+          {alerts.map((al) => (
+            <div
+              key={al.id}
+              className={`alert alert-${al.type} pointer-events-auto`}
+              style={{ justifyContent: 'space-between', minWidth: '300px' }}
             >
-              &times;
-            </button>
-          </div>
-        ))}
+              <span>{al.message}</span>
+              <button
+                type="button"
+                onClick={() => removeAlert(al.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '12pt',
+                  paddingLeft: '10px'
+                }}
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
 
         {/* Tab Content */}
         {activeTab === 'main' && (

@@ -79,8 +79,8 @@ export const MainScreen: React.FC<MainScreenProps> = ({
         {/* Record Weight */}
         <form
           onSubmit={handleWeightSubmit}
-          className="flex items-center gap-10"
-          style={{ marginBottom: '10px' }}
+          className="flex items-center gap-10 flex-wrap"
+          style={{ marginBottom: '14px' }}
         >
           <label className="font-bold" style={{ minWidth: '140px' }}>
             Registra Peso (kg):
@@ -88,10 +88,11 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           <input
             type="number"
             step="any"
+            inputMode="decimal"
             value={weightInput}
             onChange={(e) => setWeightInput(e.target.value)}
             placeholder="es. 75.5"
-            style={{ width: '120px' }}
+            style={{ width: '120px', minWidth: '100px' }}
             required
           />
           <button type="submit" className="btn btn-green">
@@ -110,10 +111,11 @@ export const MainScreen: React.FC<MainScreenProps> = ({
           <input
             type="number"
             step="any"
+            inputMode="decimal"
             value={calorieInput}
             onChange={(e) => setCalorieInput(e.target.value)}
             placeholder="es. 2000"
-            style={{ width: '120px' }}
+            style={{ width: '120px', minWidth: '100px' }}
             required
           />
           <button type="submit" className="btn btn-blue">
@@ -170,7 +172,7 @@ export const MainScreen: React.FC<MainScreenProps> = ({
       {(stats.trend !== 'Stazionario' || data.weights.length > 1) && (
         <div className="card" style={{ marginTop: '14px' }}>
           <div className="card-title">Analisi e Statistiche del Trend</div>
-          <div className="row text-center">
+          <div className="row text-center stats-grid-mobile">
             <div className="col">
               <div className="stat-box">
                 <div className="stat-label">Trend Rilevato</div>

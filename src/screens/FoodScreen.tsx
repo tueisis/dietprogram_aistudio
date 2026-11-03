@@ -125,6 +125,7 @@ export const FoodScreen: React.FC<FoodScreenProps> = ({
                 <input
                   type="number"
                   step="any"
+                  inputMode="decimal"
                   value={qtyInput}
                   onChange={(e) => setQtyInput(e.target.value)}
                   placeholder="es. 1.5"
@@ -265,6 +266,7 @@ export const FoodScreen: React.FC<FoodScreenProps> = ({
             style={{ width: '360px' }}
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="sheet-handle" />
             <div className="card-title">Inserisci le kcal per 1 hg</div>
             <p className="hint mb-10">
               Imposta il valore calorico per <strong>{modalFoodName}</strong>:

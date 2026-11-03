@@ -46,6 +46,7 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
   onOpenConstraints,
   onNotify,
 }) => {
+  const [statusMessage, setStatusMessage] = useState('Clicca su una colonna per vedere il totale del giorno.');
   const [offset, setOffset] = useState(0);
 
   // 5 days window dates
@@ -168,10 +169,9 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
     }
 
     if (!hasMeals) {
-      onNotify('info', `📅 ${dateKey}: nessun pasto con ingredienti registrati.`);
+      setStatusMessage(`📅 ${dateKey}: nessun pasto con ingredienti registrati.`);
     } else {
-      onNotify(
-        'info',
+      setStatusMessage(
         `📅 ${dateKey} — Totali: ${Math.round(totals.kcal)} kcal | ${totals.proteine.toFixed(1)}g prot | ${totals.carboidrati.toFixed(1)}g carb | ${totals.grassi.toFixed(1)}g grassi`
       );
     }
@@ -253,11 +253,9 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
   // Delete template
   const handleDeleteTemplateFromModal = () => {
     if (!editingTemplateName) return;
-    if (window.confirm(`Sei sicuro di voler eliminare il pasto "${editingTemplateName}"?`)) {
-      onDeleteMealTemplate(editingTemplateName);
-      setIsEditorModalOpen(false);
-      onNotify('info', `Pasto '${editingTemplateName}' eliminato.`);
-    }
+    onDeleteMealTemplate(editingTemplateName);
+    setIsEditorModalOpen(false);
+    onNotify('info', `Pasto '${editingTemplateName}' eliminato.`);
   };
 
   // Add ingredient in modal
@@ -363,18 +361,19 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
   });
 
   // Calculate selected cell nutrients for inspector
-  const inspectorData = selectedCell
+  const currentPlanMeal = selectedCell ? data.plan[selectedCell.date]?.[selectedCell.cat] : null;
+  const inspectorData = selectedCell && currentPlanMeal && currentPlanMeal !== '-'
     ? (() => {
-        const mealData = data.pasti[selectedCell.mealName];
+        const mealData = data.pasti[currentPlanMeal];
         const ings = mealData ? getMealIngredients(mealData) : [];
         const nut = calculateMealNutrients(
-          selectedCell.mealName,
+          currentPlanMeal,
           data.pasti,
           data.nvalues,
           selectedCell.portion
         );
         const cost = calculateMealCost(
-          selectedCell.mealName,
+          currentPlanMeal,
           data.pasti,
           data.prices,
           selectedCell.portion
@@ -394,6 +393,7 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: '10px',
+            marginBottom: '10px',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -442,79 +442,94 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
             </button>
           )}
         </div>
+        <div
+          style={{
+            background: 'var(--bg-card-hover)',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '9pt',
+            color: 'var(--text-muted)',
+            textAlign: 'center',
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          {statusMessage}
+        </div>
       </div>
 
       {/* Weekly Planner Grid */}
-      <table className="treeview">
-        <thead>
-          <tr>
-            <th>Orario</th>
-            {dateKeys.map((dk) => (
-              <th
-                key={dk.key}
-                className="clickable"
-                style={{ cursor: 'pointer' }}
-                onClick={() => handleDaySummaryClick(dk.key)}
-                title="Clicca per visualizzare i totali nutrizionali giornalieri"
-              >
-                {dk.display}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {MEAL_CATEGORIES.map((cat) => (
-            <tr key={cat}>
-              <td className="font-bold">{cat}</td>
-              {dateKeys.map((dk) => {
-                const mealName = data.plan[dk.key]?.[cat] || '-';
-                const portion = data.porzioni[dk.key]?.[cat];
-                const isToday = dk.key === todayKey;
-                const isSelectedForSwap =
-                  swapFirstCell?.date === dk.key && swapFirstCell?.cat === cat;
-                const isCellInspected =
-                  selectedCell?.date === dk.key && selectedCell?.cat === cat;
-
-                return (
-                  <td
-                    key={dk.key}
-                    className={`clickable ${isSelectedForSwap ? 'selected' : ''}`}
-                    style={{
-                      background: isCellInspected ? 'var(--bg-card-hover)' : undefined,
-                      border: isCellInspected ? '2px solid var(--primary)' : undefined,
-                    }}
-                    onClick={() => handleCellClick(dk.key, cat, mealName)}
-                    onDoubleClick={() => handleCellDblClick(dk.key, cat)}
-                    title="Click: dettagli e porzione | Doppio click: assegna pasto"
-                  >
-                    <span className="meal-name">{formatMealName(mealName)}</span>
-                    {mealName !== '-' && portion && portion !== 1 && (
-                      <span className="portion-badge" title={`Porzione: ${portion}x`}>
-                        &times;{portion}
-                      </span>
-                    )}
-                    {mealName !== '-' && isToday && (
-                      <span className="cell-actions">
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          title="Aggiungi al diario di oggi"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAddPlanToDiary(mealName, dk.key, cat);
-                          }}
-                        >
-                          &#128221;
-                        </button>
-                      </span>
-                    )}
-                  </td>
-                );
-              })}
+      <div className="table-responsive">
+        <table className="treeview">
+          <thead>
+            <tr>
+              <th>Orario</th>
+              {dateKeys.map((dk) => (
+                <th
+                  key={dk.key}
+                  className="clickable"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleDaySummaryClick(dk.key)}
+                  title="Clicca per visualizzare i totali nutrizionali giornalieri"
+                >
+                  {dk.display}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {MEAL_CATEGORIES.map((cat) => (
+              <tr key={cat}>
+                <td className="font-bold">{cat}</td>
+                {dateKeys.map((dk) => {
+                  const mealName = data.plan[dk.key]?.[cat] || '-';
+                  const portion = data.porzioni[dk.key]?.[cat];
+                  const isToday = dk.key === todayKey;
+                  const isSelectedForSwap =
+                    swapFirstCell?.date === dk.key && swapFirstCell?.cat === cat;
+                  const isCellInspected =
+                    selectedCell?.date === dk.key && selectedCell?.cat === cat;
+
+                  return (
+                    <td
+                      key={dk.key}
+                      className={`clickable ${isSelectedForSwap ? 'selected' : ''}`}
+                      style={{
+                        background: isCellInspected ? 'var(--bg-card-hover)' : undefined,
+                        border: isCellInspected ? '2px solid var(--primary)' : undefined,
+                      }}
+                      onClick={() => handleCellClick(dk.key, cat, mealName)}
+                      onDoubleClick={() => handleCellDblClick(dk.key, cat)}
+                      title="Click: dettagli e porzione | Doppio click: assegna pasto"
+                    >
+                      <span className="meal-name">{formatMealName(mealName)}</span>
+                      {mealName !== '-' && portion && portion !== 1 && (
+                        <span className="portion-badge" title={`Porzione: ${portion}x`}>
+                          &times;{portion}
+                        </span>
+                      )}
+                      {mealName !== '-' && isToday && (
+                        <span className="cell-actions">
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            title="Aggiungi al diario di oggi"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddPlanToDiary(mealName, dk.key, cat);
+                            }}
+                          >
+                            &#128221;
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* Modern Planned Meal Inspector (when a meal in the grid is clicked) */}
       {selectedCell && inspectorData && (
@@ -663,20 +678,29 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
             Ottimizza Piano
           </button>
 
-          {hasPlanInWindow && (
-            <button
-              type="button"
-              className="btn btn-red"
-              onClick={() => {
-                if (window.confirm('Svuotare il piano dei 5 giorni visualizzati?')) {
-                  onClearPlanRange(dateKeys.map((d) => d.key));
-                  onNotify('success', 'Piano settimanale svuotato con successo!');
-                }
-              }}
-            >
-              Svuota Piano
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-red"
+            disabled={!hasPlanInWindow}
+            style={{
+              opacity: !hasPlanInWindow ? 0.5 : 1,
+              cursor: !hasPlanInWindow ? 'not-allowed' : 'pointer',
+            }}
+            onClick={() => {
+              if (!hasPlanInWindow) return;
+              onClearPlanRange(dateKeys.map((d) => d.key));
+              dateKeys.forEach((dk) => {
+                MEAL_CATEGORIES.forEach((cat) => {
+                  onAssignMeal(dk.key, cat, '-');
+                });
+              });
+              setSelectedCell(null);
+              setStatusMessage('Clicca su una colonna per vedere il totale del giorno.');
+              onNotify('success', 'Piano settimanale svuotato con successo!');
+            }}
+          >
+            Svuota Piano
+          </button>
 
           <button
             type="button"
@@ -883,10 +907,8 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
                     className="btn btn-red"
                     style={{ padding: '4px 8px', fontSize: '8.5pt' }}
                     onClick={() => {
-                      if (window.confirm(`Eliminare il pasto "${meal.name}"?`)) {
-                        onDeleteMealTemplate(meal.name);
-                        onNotify('info', `Pasto '${meal.name}' eliminato.`);
-                      }
+                      onDeleteMealTemplate(meal.name);
+                      onNotify('info', `Pasto '${meal.name}' eliminato.`);
                     }}
                     title="Elimina pasto"
                   >
@@ -937,6 +959,7 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
             style={{ width: '680px', maxHeight: '90vh', overflowY: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="sheet-handle" />
             <div className="card-title" style={{ justifyContent: 'space-between' }}>
               <span>
                 {editingTemplateName ? `Modifica Pasto: ${editingTemplateName}` : 'Nuovo Pasto Rapido'}
@@ -1185,6 +1208,7 @@ export const PlannerScreen: React.FC<PlannerScreenProps> = ({
             style={{ width: '440px' }}
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="sheet-handle" />
             <div className="card-title">
               Associa Pasto ({assignTarget.category} &mdash; {formatItalianDate(assignTarget.date)})
             </div>

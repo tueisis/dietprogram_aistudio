@@ -39,7 +39,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
       }
       return [...prev, [food, qty]];
     });
-    onNotify('info', `Aggiunto "${food}" (${qty} hg) al pasto rapido.`);
   };
 
   const handleRemoveIngredient = (idx: number) => {
